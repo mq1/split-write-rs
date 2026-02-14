@@ -120,6 +120,9 @@ impl Seek for SplitWriter {
 
         let file_offset = self.current_pos % self.split_size;
         writer.seek(io::SeekFrom::Start(file_offset))?;
+        for next_writer in &mut self.writers[i + 1..] {
+            next_writer.rewind()?;
+        }
 
         Ok(self.current_pos)
     }
