@@ -37,14 +37,13 @@ impl SplitWriter {
     }
 
     pub fn total_len(&mut self) -> io::Result<u64> {
-        if self.writers.is_empty() {
+        let Some(writer) = self.writers.last_mut() else {
             return Ok(0);
-        }
+        };
 
-        let last_i = self.writers.len() - 1;
-        self.writers[last_i].flush()?;
-        let last_file_len = self.writers[last_i].get_ref().metadata()?.len();
-        let total_len = (last_i as u64 * self.split_size) + last_file_len;
+        writer.flush()?;
+        let last_file_len = writer.get_ref().metadata()?.len();
+        let total_len = ((self.writers.len() - 1) as u64 * self.split_size) + last_file_len;
 
         Ok(total_len)
     }
