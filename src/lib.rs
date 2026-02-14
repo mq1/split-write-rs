@@ -114,12 +114,12 @@ impl Seek for SplitWriter {
         #[allow(clippy::cast_possible_truncation)]
         let i = (self.current_pos / self.split_size) as usize;
 
-        let file_offset = self.current_pos % self.split_size;
-        self.writers[i].seek(io::SeekFrom::Start(file_offset))?;
+        let Some(writer) = self.writers.get_mut(i) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        };
 
-        for w in &mut self.writers[i + 1..] {
-            w.rewind()?;
-        }
+        let file_offset = self.current_pos % self.split_size;
+        writer.seek(io::SeekFrom::Start(file_offset))?;
 
         Ok(self.current_pos)
     }
