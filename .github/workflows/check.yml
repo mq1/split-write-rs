@@ -1,0 +1,22 @@
+name: Check
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-all:
+    runs-on: ubuntu-slim
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: check
+        run: cargo check
+
