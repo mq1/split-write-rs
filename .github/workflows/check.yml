@@ -19,9 +19,8 @@ jobs:
 
       - name: test
         run: |
-          dd if=/dev/urandom of=random.bin bs=1M count=6 status=none
           mkdir out
-          cargo run --features cli -- -s 2MiB random.bin out/
+          dd if=/dev/urandom bs=1M count=6 status=none | cargo run --features cli -- -s 2MiB out/
 
           for f in out/*; do
               size=$(stat -c%s "$f")
