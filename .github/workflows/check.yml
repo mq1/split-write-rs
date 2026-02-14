@@ -17,6 +17,16 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@1.85
 
-      - name: check
-        run: cargo check
+      - name: test
+        run: |
+          dd if=/dev/urandom of=random.bin bs=1M count=6 status=none
+          mkdir out
+          cargo run --features cli -- -s 2MiB random.bin out/
 
+          for f in out/*; do
+              size=$(stat -c%s "$f")
+              if [ "$size" -ne $((2 * 1024 * 1024)) ]; then
+                  echo "Error: $f is NOT 2MiB (size: $size bytes)"
+                  exit 1
+              fi
+          done
