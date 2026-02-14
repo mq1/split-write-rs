@@ -7,7 +7,7 @@ authors = ["Manuel Quarneti <mq1@ik.me>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mq1/split-write-rs"
 homepage = "https://github.com/mq1/split-write-rs"
-description = "Write a stream into multiple files"
+description = "Write files with configurable splitting"
 
 [features]
 default = []
