@@ -52,11 +52,9 @@ impl SplitWriter {
 
 impl Write for SplitWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let file_offset = self.current_pos % self.split_size;
-        let remaining_in_file = self.split_size - file_offset;
-
-        #[allow(clippy::cast_possible_truncation)]
-        let i = (self.current_pos / self.split_size) as usize;
+        let Ok(i) = usize::try_from(self.current_pos / self.split_size) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        };
 
         if i >= self.writers.len() {
             let file_name = (self.get_file_name)(i);
@@ -67,8 +65,12 @@ impl Write for SplitWriter {
 
         let writer = &mut self.writers[i];
 
-        #[allow(clippy::cast_possible_truncation)]
-        let n_to_write = buf.len().min(remaining_in_file as usize);
+        let file_offset = self.current_pos % self.split_size;
+        let Ok(remaining_in_file) = usize::try_from(self.split_size - file_offset) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        };
+
+        let n_to_write = buf.len().min(remaining_in_file);
         let n_written = writer.write(&buf[..n_to_write])?;
         self.current_pos += n_written as u64;
 
@@ -111,8 +113,9 @@ impl Seek for SplitWriter {
             }
         };
 
-        #[allow(clippy::cast_possible_truncation)]
-        let i = (self.current_pos / self.split_size) as usize;
+        let Ok(i) = usize::try_from(self.current_pos / self.split_size) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        };
 
         let Some(writer) = self.writers.get_mut(i) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
