@@ -4,13 +4,14 @@
 use std::{
     fs::File,
     io::{self, BufWriter, Seek, Write},
+    num::NonZeroU64,
     path::PathBuf,
 };
 
 pub struct SplitWriter {
-    split_size: u64,
+    split_size: NonZeroU64,
     dest_dir: PathBuf,
-    get_file_name: Box<dyn Fn(usize) -> String>,
+    get_file_name: Box<dyn Fn(usize) -> String + Send + Sync>,
     current_pos: u64,
     writers: Vec<BufWriter<File>>,
 }
@@ -18,22 +19,20 @@ pub struct SplitWriter {
 impl SplitWriter {
     pub fn new(
         dest_dir: PathBuf,
-        get_file_name: impl Fn(usize) -> String + 'static,
-        split_size: u64,
+        get_file_name: impl Fn(usize) -> String + Send + Sync + 'static,
+        split_size: NonZeroU64,
     ) -> io::Result<SplitWriter> {
         let first_file_path = dest_dir.join(get_file_name(0));
         let first_writer = BufWriter::with_capacity(32_768, File::create(first_file_path)?);
         let writers = vec![first_writer];
 
-        let split_writer = SplitWriter {
+        Ok(SplitWriter {
             split_size,
             dest_dir,
             get_file_name: Box::new(get_file_name),
             current_pos: 0,
             writers,
-        };
-
-        Ok(split_writer)
+        })
     }
 
     pub fn total_len(&mut self) -> io::Result<u64> {
@@ -43,7 +42,7 @@ impl SplitWriter {
 
         writer.flush()?;
         let last_file_len = writer.get_ref().metadata()?.len();
-        let total_len = ((self.writers.len() - 1) as u64 * self.split_size) + last_file_len;
+        let total_len = ((self.writers.len() - 1) as u64 * self.split_size.get()) + last_file_len;
 
         Ok(total_len)
     }
@@ -65,8 +64,8 @@ impl Write for SplitWriter {
         let writer = &mut self.writers[i];
 
         let file_offset = self.current_pos % self.split_size;
-        let Ok(remaining_in_file) = usize::try_from(self.split_size - file_offset) else {
-            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        let Ok(remaining_in_file) = usize::try_from(self.split_size.get() - file_offset) else {
+            return Err(io::Error::from(io::ErrorKind::FileTooLarge));
         };
 
         let n_to_write = buf.len().min(remaining_in_file);
@@ -87,7 +86,13 @@ impl Write for SplitWriter {
 impl Seek for SplitWriter {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         self.current_pos = match pos {
-            io::SeekFrom::Start(n) => n,
+            io::SeekFrom::Start(n) => {
+                if n > self.total_len()? {
+                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
+                }
+
+                n
+            }
             io::SeekFrom::End(n) => {
                 if n > 0 {
                     return Err(io::Error::from(io::ErrorKind::InvalidInput));
