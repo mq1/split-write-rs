@@ -22,7 +22,7 @@ impl SplitWriter {
         split_size: u64,
     ) -> io::Result<SplitWriter> {
         let first_file_path = dest_dir.join(get_file_name(0));
-        let first_writer = BufWriter::new(File::create(first_file_path)?);
+        let first_writer = BufWriter::with_capacity(32_768, File::create(first_file_path)?);
         let writers = vec![first_writer];
 
         let split_writer = SplitWriter {
@@ -58,7 +58,7 @@ impl Write for SplitWriter {
         if i >= self.writers.len() {
             let file_name = (self.get_file_name)(i);
             let file_path = self.dest_dir.join(file_name);
-            let writer = BufWriter::new(File::create(file_path)?);
+            let writer = BufWriter::with_capacity(32_768, File::create(file_path)?);
             self.writers.push(writer);
         }
 
