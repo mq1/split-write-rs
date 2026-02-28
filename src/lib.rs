@@ -19,7 +19,7 @@ pub struct SplitWriter<F> {
 
 impl<F> SplitWriter<F>
 where
-    F: Fn(usize) -> String + Send + Sync,
+    F: Fn(usize) -> String,
 {
     pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> Self {
         Self {
@@ -35,7 +35,7 @@ where
 
 impl<F> Write for SplitWriter<F>
 where
-    F: Fn(usize) -> String + Send + Sync,
+    F: Fn(usize) -> String,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let Ok(i) = usize::try_from(self.current_pos / self.split_size.get()) else {
@@ -73,7 +73,7 @@ where
 
 impl<F> Seek for SplitWriter<F>
 where
-    F: Fn(usize) -> String + Send + Sync,
+    F: Fn(usize) -> String,
 {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         let new_pos = match pos {
