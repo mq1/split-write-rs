@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::{self, Seek, Write},
     num::NonZeroU64,
     path::PathBuf,
@@ -16,7 +16,6 @@ pub struct SplitWriter<F> {
     current_pos: u64,
     total_len: u64,
     writers: Vec<File>,
-    last_write_pos: u64,
 }
 
 impl<F> SplitWriter<F>
@@ -31,7 +30,6 @@ where
             current_pos: 0,
             total_len: 0,
             writers: Vec::new(),
-            last_write_pos: 0,
         }
     }
 
@@ -56,21 +54,13 @@ where
             let idx = self.writers.len();
             let file_name = (self.get_file_name)(idx);
             let file_path = self.dest_dir.join(file_name);
-            let file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(file_path)?;
+            let file = File::create(file_path)?;
 
             self.writers.push(file);
         }
 
         let writer = &mut self.writers[i];
         let file_offset = self.current_pos % self.split_size.get();
-
-        if self.last_write_pos != self.current_pos {
-            writer.seek(io::SeekFrom::Start(file_offset))?;
-        }
 
         let remaining_in_file =
             usize::try_from(self.split_size.get() - file_offset).unwrap_or(usize::MAX);
@@ -80,7 +70,6 @@ where
 
         self.current_pos += n_written as u64;
         self.total_len = self.total_len.max(self.current_pos);
-        self.last_write_pos = self.current_pos;
 
         Ok(n_written)
     }
@@ -109,6 +98,16 @@ where
                 .checked_add_signed(n)
                 .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?,
         };
+
+        let i = usize::try_from(self.current_pos / self.split_size.get())
+            .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+
+        let file_offset = self.current_pos % self.split_size.get();
+
+        self.writers[i].seek(io::SeekFrom::Start(file_offset))?;
+        for i in i + 1..self.writers.len() {
+            self.writers[i].seek(io::SeekFrom::Start(0))?;
+        }
 
         Ok(self.current_pos)
     }
