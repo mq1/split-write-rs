@@ -90,22 +90,22 @@ impl Seek for SplitWriter {
             io::SeekFrom::Start(n) => n,
             io::SeekFrom::End(n) => {
                 if n > 0 {
-                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 }
 
                 let Some(new_pos) = self.total_len()?.checked_add_signed(n) else {
-                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 };
 
                 new_pos
             }
             io::SeekFrom::Current(n) => {
                 let Some(new_pos) = self.current_pos.checked_add_signed(n) else {
-                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 };
 
                 if new_pos > self.total_len()? {
-                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 }
 
                 new_pos
@@ -116,14 +116,17 @@ impl Seek for SplitWriter {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
         };
 
-        let Some(writer) = self.writers.get_mut(i) else {
+        if i > self.writers.len() {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
-        };
+        }
 
-        let file_offset = self.current_pos % self.split_size;
-        writer.seek(io::SeekFrom::Start(file_offset))?;
-        for next_writer in &mut self.writers[i + 1..] {
-            next_writer.rewind()?;
+        if i < self.writers.len() {
+            let file_offset = self.current_pos % self.split_size;
+            self.writers[i].seek(io::SeekFrom::Start(file_offset))?;
+
+            for next_writer in &mut self.writers[i + 1..] {
+                next_writer.rewind()?;
+            }
         }
 
         Ok(self.current_pos)
