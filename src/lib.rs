@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::{
-    fs::File,
-    io::{self, BufWriter, Seek, Write},
+    fs::{File, OpenOptions},
+    io::{self, Seek, Write},
     num::NonZeroU64,
     path::PathBuf,
 };
@@ -14,7 +14,7 @@ pub struct SplitWriter<F> {
     get_file_name: F,
     current_pos: u64,
     total_len: u64,
-    writers: Vec<BufWriter<File>>,
+    writers: Vec<File>,
     last_write_pos: u64,
 }
 
@@ -55,9 +55,13 @@ where
             let idx = self.writers.len();
             let file_name = (self.get_file_name)(idx);
             let file_path = self.dest_dir.join(file_name);
-            let file = File::create(file_path)?;
+            let file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(file_path)?;
 
-            self.writers.push(BufWriter::with_capacity(32_768, file));
+            self.writers.push(file);
         }
 
         let writer = &mut self.writers[i];
