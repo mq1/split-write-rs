@@ -56,9 +56,8 @@ where
         let writer = &mut self.writers[i];
 
         let file_offset = self.current_pos % self.split_size.get();
-        let Ok(remaining_in_file) = usize::try_from(self.split_size.get() - file_offset) else {
-            return Err(io::Error::from(io::ErrorKind::FileTooLarge));
-        };
+        let remaining_in_file =
+            usize::try_from(self.split_size.get() - file_offset).unwrap_or(usize::MAX);
 
         let n_to_write = buf.len().min(remaining_in_file);
         let n_written = writer.write(&buf[..n_to_write])?;
