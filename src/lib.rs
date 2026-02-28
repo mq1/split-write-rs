@@ -59,8 +59,10 @@ where
             self.writers.push(file);
         }
 
-        let writer = &mut self.writers[i];
         let file_offset = self.current_pos % self.split_size.get();
+        let writer = &mut self.writers[i];
+
+        writer.seek(io::SeekFrom::Start(file_offset))?;
 
         let remaining_in_file =
             usize::try_from(self.split_size.get() - file_offset).unwrap_or(usize::MAX);
@@ -98,16 +100,6 @@ where
                 .checked_add_signed(n)
                 .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?,
         };
-
-        let i = usize::try_from(self.current_pos / self.split_size.get())
-            .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
-
-        let file_offset = self.current_pos % self.split_size.get();
-
-        self.writers[i].seek(io::SeekFrom::Start(file_offset))?;
-        for i in i + 1..self.writers.len() {
-            self.writers[i].seek(io::SeekFrom::Start(0))?;
-        }
 
         Ok(self.current_pos)
     }
