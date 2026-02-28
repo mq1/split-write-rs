@@ -13,6 +13,7 @@ pub struct SplitWriter {
     dest_dir: PathBuf,
     get_file_name: Box<dyn Fn(usize) -> String + Send + Sync>,
     current_pos: u64,
+    total_len: u64,
     writers: Vec<BufWriter<File>>,
 }
 
@@ -31,26 +32,15 @@ impl SplitWriter {
             dest_dir,
             get_file_name: Box::new(get_file_name),
             current_pos: 0,
+            total_len: 0,
             writers,
         })
-    }
-
-    pub fn total_len(&mut self) -> io::Result<u64> {
-        let Some(writer) = self.writers.last_mut() else {
-            return Ok(0);
-        };
-
-        writer.flush()?;
-        let last_file_len = writer.get_ref().metadata()?.len();
-        let total_len = ((self.writers.len() - 1) as u64 * self.split_size.get()) + last_file_len;
-
-        Ok(total_len)
     }
 }
 
 impl Write for SplitWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let Ok(i) = usize::try_from(self.current_pos / self.split_size) else {
+        let Ok(i) = usize::try_from(self.current_pos / self.split_size.get()) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
         };
 
@@ -63,7 +53,7 @@ impl Write for SplitWriter {
 
         let writer = &mut self.writers[i];
 
-        let file_offset = self.current_pos % self.split_size;
+        let file_offset = self.current_pos % self.split_size.get();
         let Ok(remaining_in_file) = usize::try_from(self.split_size.get() - file_offset) else {
             return Err(io::Error::from(io::ErrorKind::FileTooLarge));
         };
@@ -71,6 +61,7 @@ impl Write for SplitWriter {
         let n_to_write = buf.len().min(remaining_in_file);
         let n_written = writer.write(&buf[..n_to_write])?;
         self.current_pos += n_written as u64;
+        self.total_len = self.total_len.max(self.current_pos);
 
         Ok(n_written)
     }
@@ -85,20 +76,10 @@ impl Write for SplitWriter {
 
 impl Seek for SplitWriter {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        self.current_pos = match pos {
-            io::SeekFrom::Start(n) => {
-                if n > self.total_len()? {
-                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
-                }
-
-                n
-            }
+        let new_pos = match pos {
+            io::SeekFrom::Start(n) => n,
             io::SeekFrom::End(n) => {
-                if n > 0 {
-                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
-                }
-
-                let Some(new_pos) = self.total_len()?.checked_add_signed(n) else {
+                let Some(new_pos) = self.total_len.checked_add_signed(n) else {
                     return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 };
 
@@ -109,15 +90,17 @@ impl Seek for SplitWriter {
                     return Err(io::Error::from(io::ErrorKind::InvalidInput));
                 };
 
-                if new_pos > self.total_len()? {
-                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
-                }
-
                 new_pos
             }
         };
 
-        let Ok(i) = usize::try_from(self.current_pos / self.split_size) else {
+        if new_pos > self.total_len {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        }
+
+        self.current_pos = new_pos;
+
+        let Ok(i) = usize::try_from(self.current_pos / self.split_size.get()) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
         };
 
@@ -126,7 +109,7 @@ impl Seek for SplitWriter {
         }
 
         if i < self.writers.len() {
-            let file_offset = self.current_pos % self.split_size;
+            let file_offset = self.current_pos % self.split_size.get();
             self.writers[i].seek(io::SeekFrom::Start(file_offset))?;
 
             for next_writer in &mut self.writers[i + 1..] {

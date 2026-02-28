@@ -49,11 +49,17 @@ fn parse_args() -> Result<Args, lexopt::Error> {
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), lexopt::Error> {
+    use std::num::NonZeroU64;
+
     let args = parse_args()?;
 
     assert!(args.dest_dir.is_dir(), "Dest path must be a directory");
 
     let Ok(split_size) = u64::try_from(args.split_size.bytes()) else {
+        panic!("Invalid split size");
+    };
+
+    let Some(split_size) = NonZeroU64::new(split_size) else {
         panic!("Invalid split size");
     };
 
