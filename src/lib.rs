@@ -15,6 +15,7 @@ pub struct SplitWriter<F> {
     current_pos: u64,
     total_len: u64,
     writers: Vec<BufWriter<File>>,
+    last_write_pos: u64,
 }
 
 impl<F> SplitWriter<F>
@@ -29,6 +30,7 @@ where
             current_pos: 0,
             total_len: 0,
             writers: Vec::new(),
+            last_write_pos: 0,
         }
     }
 
@@ -42,10 +44,13 @@ where
     F: Fn(usize) -> String,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
         let i = usize::try_from(self.current_pos / self.split_size.get())
             .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
 
-        // Safely fill gaps if the user seeks far ahead
         while self.writers.len() <= i {
             let idx = self.writers.len();
             let file_name = (self.get_file_name)(idx);
@@ -56,11 +61,11 @@ where
         }
 
         let writer = &mut self.writers[i];
-
-        // Ensure the underlying writer is physically at the correct offset
-        // before writing, in case we just jumped here via Seek.
         let file_offset = self.current_pos % self.split_size.get();
-        writer.seek(io::SeekFrom::Start(file_offset))?;
+
+        if self.last_write_pos != self.current_pos {
+            writer.seek(io::SeekFrom::Start(file_offset))?;
+        }
 
         let remaining_in_file =
             usize::try_from(self.split_size.get() - file_offset).unwrap_or(usize::MAX);
@@ -70,6 +75,7 @@ where
 
         self.current_pos += n_written as u64;
         self.total_len = self.total_len.max(self.current_pos);
+        self.last_write_pos = self.current_pos;
 
         Ok(n_written)
     }

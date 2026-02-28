@@ -16,7 +16,7 @@ checksum = "1b6709c7b6754dca1311b3c73e79fcce40dd414c782c66d88e8823030093b02b"
 
 [[package]]
 name = "split-write"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "lexopt",
  "size",
