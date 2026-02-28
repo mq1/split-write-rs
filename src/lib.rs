@@ -22,17 +22,13 @@ where
     F: Fn(usize) -> String + Send + Sync,
 {
     pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> io::Result<Self> {
-        let first_file_path = dest_dir.join(get_file_name(0));
-        let first_writer = BufWriter::with_capacity(32_768, File::create(first_file_path)?);
-        let writers = vec![first_writer];
-
         Ok(Self {
             split_size,
             dest_dir,
             get_file_name,
             current_pos: 0,
             total_len: 0,
-            writers,
+            writers: Vec::new(),
         })
     }
 }
