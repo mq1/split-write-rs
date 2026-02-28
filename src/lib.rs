@@ -8,29 +8,28 @@ use std::{
     path::PathBuf,
 };
 
-pub struct SplitWriter {
+pub struct SplitWriter<F> {
     split_size: NonZeroU64,
     dest_dir: PathBuf,
-    get_file_name: Box<dyn Fn(usize) -> String + Send + Sync>,
+    get_file_name: F,
     current_pos: u64,
     total_len: u64,
     writers: Vec<BufWriter<File>>,
 }
 
-impl SplitWriter {
-    pub fn new(
-        dest_dir: PathBuf,
-        get_file_name: impl Fn(usize) -> String + Send + Sync + 'static,
-        split_size: NonZeroU64,
-    ) -> io::Result<SplitWriter> {
+impl<F> SplitWriter<F>
+where
+    F: Fn(usize) -> String + Send + Sync,
+{
+    pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> io::Result<Self> {
         let first_file_path = dest_dir.join(get_file_name(0));
         let first_writer = BufWriter::with_capacity(32_768, File::create(first_file_path)?);
         let writers = vec![first_writer];
 
-        Ok(SplitWriter {
+        Ok(Self {
             split_size,
             dest_dir,
-            get_file_name: Box::new(get_file_name),
+            get_file_name,
             current_pos: 0,
             total_len: 0,
             writers,
@@ -38,7 +37,10 @@ impl SplitWriter {
     }
 }
 
-impl Write for SplitWriter {
+impl<F> Write for SplitWriter<F>
+where
+    F: Fn(usize) -> String + Send + Sync,
+{
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let Ok(i) = usize::try_from(self.current_pos / self.split_size.get()) else {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -74,7 +76,10 @@ impl Write for SplitWriter {
     }
 }
 
-impl Seek for SplitWriter {
+impl<F> Seek for SplitWriter<F>
+where
+    F: Fn(usize) -> String + Send + Sync,
+{
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         let new_pos = match pos {
             io::SeekFrom::Start(n) => n,
