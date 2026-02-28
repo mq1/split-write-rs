@@ -31,6 +31,10 @@ where
             writers: Vec::new(),
         }
     }
+
+    pub fn file_count(&self) -> usize {
+        self.writers.len()
+    }
 }
 
 impl<F> Write for SplitWriter<F>
