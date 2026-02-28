@@ -8,6 +8,7 @@ use std::{
     path::PathBuf,
 };
 
+#[derive(Debug)]
 pub struct SplitWriter<F> {
     split_size: NonZeroU64,
     dest_dir: PathBuf,
