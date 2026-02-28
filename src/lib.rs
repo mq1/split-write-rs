@@ -22,10 +22,10 @@ impl<F> SplitWriter<F>
 where
     F: Fn(usize) -> String,
 {
-    pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> Self {
+    pub fn new(dest_dir: impl Into<PathBuf>, get_file_name: F, split_size: NonZeroU64) -> Self {
         Self {
             split_size,
-            dest_dir,
+            dest_dir: dest_dir.into(),
             get_file_name,
             current_pos: 0,
             total_len: 0,
