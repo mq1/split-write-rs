@@ -47,8 +47,8 @@ where
             return Ok(0);
         }
 
-        let i = usize::try_from(self.current_pos / self.split_size.get())
-            .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+        #[allow(clippy::cast_possible_truncation)]
+        let i = (self.current_pos / self.split_size.get()) as usize;
 
         while self.writers.len() <= i {
             let idx = self.writers.len();
