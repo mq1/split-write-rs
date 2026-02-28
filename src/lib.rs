@@ -21,15 +21,15 @@ impl<F> SplitWriter<F>
 where
     F: Fn(usize) -> String + Send + Sync,
 {
-    pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> io::Result<Self> {
-        Ok(Self {
+    pub fn new(dest_dir: PathBuf, get_file_name: F, split_size: NonZeroU64) -> Self {
+        Self {
             split_size,
             dest_dir,
             get_file_name,
             current_pos: 0,
             total_len: 0,
             writers: Vec::new(),
-        })
+        }
     }
 }
 
