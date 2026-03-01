@@ -14,27 +14,45 @@ pub struct SplitWriter<F> {
     dest_dir: PathBuf,
     get_file_name: F,
     current_pos: u64,
-    total_len: u64,
-    writers: Vec<File>,
+    first_file: File,
+    last_file: Option<File>,
+    file_count: usize,
 }
 
 impl<F> SplitWriter<F>
 where
     F: Fn(usize) -> String,
 {
-    pub fn new(dest_dir: impl Into<PathBuf>, get_file_name: F, split_size: NonZeroU64) -> Self {
-        Self {
+    pub fn try_new(
+        dest_dir: impl Into<PathBuf>,
+        get_file_name: F,
+        split_size: NonZeroU64,
+    ) -> io::Result<Self> {
+        let dest_dir = dest_dir.into();
+        let first_file = File::create(dest_dir.join(get_file_name(0)))?;
+
+        Ok(Self {
             split_size,
-            dest_dir: dest_dir.into(),
+            dest_dir,
             get_file_name,
             current_pos: 0,
-            total_len: 0,
-            writers: Vec::new(),
-        }
+            first_file,
+            last_file: None,
+            file_count: 1,
+        })
     }
 
     pub fn file_count(&self) -> usize {
-        self.writers.len()
+        self.file_count
+    }
+
+    pub fn total_size(&self) -> u64 {
+        self.current_pos
+    }
+
+    pub fn write_header(&mut self, header: &[u8]) -> io::Result<()> {
+        self.first_file.rewind()?;
+        self.first_file.write_all(header)
     }
 }
 
@@ -50,57 +68,43 @@ where
         #[allow(clippy::cast_possible_truncation)]
         let i = (self.current_pos / self.split_size.get()) as usize;
 
-        while self.writers.len() <= i {
-            let idx = self.writers.len();
+        if self.file_count <= i {
+            let idx = self.file_count;
             let file_name = (self.get_file_name)(idx);
             let file_path = self.dest_dir.join(file_name);
             let file = File::create(file_path)?;
 
-            self.writers.push(file);
+            if let Some(last_file) = &mut self.last_file {
+                last_file.flush()?;
+            }
+
+            self.last_file = Some(file);
+            self.file_count += 1;
         }
 
-        let file_offset = self.current_pos % self.split_size.get();
-        let writer = &mut self.writers[i];
+        let (file, offset) = if let Some(last_file) = &mut self.last_file {
+            (last_file, self.current_pos % self.split_size.get())
+        } else {
+            (&mut self.first_file, self.current_pos)
+        };
 
-        writer.seek(io::SeekFrom::Start(file_offset))?;
+        let to_write = match usize::try_from(self.split_size.get() - offset) {
+            Ok(remaining) => buf.len().min(remaining),
+            Err(_) => buf.len(),
+        };
 
-        let remaining_in_file =
-            usize::try_from(self.split_size.get() - file_offset).unwrap_or(usize::MAX);
+        let n = file.write(&buf[..to_write])?;
 
-        let n_to_write = buf.len().min(remaining_in_file);
-        let n_written = writer.write(&buf[..n_to_write])?;
+        self.current_pos += n as u64;
 
-        self.current_pos += n_written as u64;
-        self.total_len = self.total_len.max(self.current_pos);
-
-        Ok(n_written)
+        Ok(n)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        for w in &mut self.writers {
-            w.flush()?;
+        if let Some(last_file) = &mut self.last_file {
+            last_file.flush()?;
         }
-        Ok(())
-    }
-}
 
-impl<F> Seek for SplitWriter<F>
-where
-    F: Fn(usize) -> String,
-{
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        self.current_pos = match pos {
-            io::SeekFrom::Start(n) => n,
-            io::SeekFrom::End(n) => self
-                .total_len
-                .checked_add_signed(n)
-                .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?,
-            io::SeekFrom::Current(n) => self
-                .current_pos
-                .checked_add_signed(n)
-                .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?,
-        };
-
-        Ok(self.current_pos)
+        self.first_file.flush()
     }
 }
