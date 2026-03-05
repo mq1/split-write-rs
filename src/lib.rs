@@ -68,8 +68,7 @@ where
         let i = self.current_pos / self.split_size.get();
 
         if self.file_count <= i {
-            let idx = self.file_count;
-            let file_name = (self.get_file_name)(idx);
+            let file_name = (self.get_file_name)(self.file_count);
             let file_path = self.dest_dir.join(file_name);
             let file = File::create(file_path)?;
 
