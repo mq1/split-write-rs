@@ -16,12 +16,12 @@ pub struct SplitWriter<F> {
     current_pos: u64,
     first_file: File,
     last_file: Option<File>,
-    file_count: usize,
+    file_count: u64,
 }
 
 impl<F> SplitWriter<F>
 where
-    F: Fn(usize) -> String,
+    F: Fn(u64) -> String,
 {
     pub fn try_new(
         dest_dir: impl Into<PathBuf>,
@@ -42,7 +42,7 @@ where
         })
     }
 
-    pub fn file_count(&self) -> usize {
+    pub fn file_count(&self) -> u64 {
         self.file_count
     }
 
@@ -58,15 +58,14 @@ where
 
 impl<F> Write for SplitWriter<F>
 where
-    F: Fn(usize) -> String,
+    F: Fn(u64) -> String,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
 
-        #[allow(clippy::cast_possible_truncation)]
-        let i = (self.current_pos / self.split_size.get()) as usize;
+        let i = self.current_pos / self.split_size.get();
 
         if self.file_count <= i {
             let idx = self.file_count;
@@ -82,10 +81,9 @@ where
             self.file_count += 1;
         }
 
-        let (file, offset) = if let Some(last_file) = &mut self.last_file {
-            (last_file, self.current_pos % self.split_size.get())
-        } else {
-            (&mut self.first_file, self.current_pos)
+        let (file, offset) = match &mut self.last_file {
+            Some(last_file) => (last_file, self.current_pos % self.split_size.get()),
+            None => (&mut self.first_file, self.current_pos),
         };
 
         let to_write = match usize::try_from(self.split_size.get() - offset) {
