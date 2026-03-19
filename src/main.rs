@@ -63,8 +63,9 @@ fn main() -> Result<(), lexopt::Error> {
 
     let mut reader = std::io::stdin();
 
-    let mut writer = split_write::SplitWriter::create(args.dest_dir, get_file_name, split_size)
-        .expect("Failed to create split writer");
+    let mut writer =
+        split_write::SplitWriter::create(args.dest_dir, get_file_name, Some(split_size))
+            .expect("Failed to create split writer");
 
     std::io::copy(&mut reader, &mut writer).expect("Failed to copy file");
 

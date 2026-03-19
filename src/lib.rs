@@ -10,7 +10,7 @@ use std::{
 
 #[derive(Debug)]
 pub struct SplitWriter<F> {
-    split_size: NonZeroUsize,
+    split_size: Option<NonZeroUsize>,
     dest_dir: PathBuf,
     get_file_name: F,
     current_offset: usize,
@@ -26,7 +26,7 @@ where
     pub fn create(
         dest_dir: impl Into<PathBuf>,
         get_file_name: F,
-        split_size: NonZeroUsize,
+        split_size: Option<NonZeroUsize>,
     ) -> io::Result<Self> {
         let dest_dir = dest_dir.into();
         let first_file = File::create(dest_dir.join(get_file_name(0)))?;
@@ -47,7 +47,12 @@ where
     }
 
     pub fn total_size(&self) -> u64 {
-        self.split_size.get() as u64 * self.current_i as u64 + self.current_offset as u64
+        match self.split_size {
+            Some(split_size) => {
+                split_size.get() as u64 * self.current_i as u64 + self.current_offset as u64
+            }
+            None => self.current_offset as u64,
+        }
     }
 
     /// Don't do any more writes after calling this!
@@ -66,7 +71,9 @@ where
             return Ok(0);
         }
 
-        if self.current_offset == self.split_size.get() {
+        if let Some(split_size) = self.split_size
+            && self.current_offset == split_size.get()
+        {
             self.current_i += 1;
 
             let file_name = (self.get_file_name)(self.current_i);
@@ -82,9 +89,14 @@ where
             None => &mut self.first_file,
         };
 
-        let remaining = self.split_size.get() - self.current_offset;
-        let to_write = buf.len().min(remaining);
-        let written = current_file.write(&buf[..to_write])?;
+        let written = match self.split_size {
+            Some(split_size) => {
+                let remaining = split_size.get() - self.current_offset;
+                let to_write = buf.len().min(remaining);
+                current_file.write(&buf[..to_write])?
+            }
+            None => current_file.write(buf)?,
+        };
 
         self.current_offset += written;
 
