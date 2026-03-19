@@ -2,23 +2,19 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 #[cfg(feature = "cli")]
-use std::path::PathBuf;
-
-#[cfg(feature = "cli")]
-use size::Size;
-
-#[cfg(feature = "cli")]
 const USAGE: &str = "Usage: split-write [-s|--split-size SIZE] DEST_DIR < SOURCE_FILE";
 
 #[cfg(feature = "cli")]
 struct Args {
-    split_size: Size,
-    dest_dir: PathBuf,
+    split_size: size::Size,
+    dest_dir: std::path::PathBuf,
 }
 
 #[cfg(feature = "cli")]
 fn parse_args() -> Result<Args, lexopt::Error> {
     use lexopt::prelude::*;
+    use size::Size;
+    use std::path::PathBuf;
 
     let mut split_size = Size::from_bytes(0);
     let mut dest_dir = PathBuf::new();
@@ -49,17 +45,17 @@ fn parse_args() -> Result<Args, lexopt::Error> {
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), lexopt::Error> {
-    use std::num::NonZeroU64;
+    use std::num::NonZeroUsize;
 
     let args = parse_args()?;
 
     assert!(args.dest_dir.is_dir(), "Dest path must be a directory");
 
-    let Ok(split_size) = u64::try_from(args.split_size.bytes()) else {
+    let Ok(split_size) = usize::try_from(args.split_size.bytes()) else {
         panic!("Invalid split size");
     };
 
-    let Some(split_size) = NonZeroU64::new(split_size) else {
+    let Some(split_size) = NonZeroUsize::new(split_size) else {
         panic!("Invalid split size");
     };
 
@@ -67,7 +63,7 @@ fn main() -> Result<(), lexopt::Error> {
 
     let mut reader = std::io::stdin();
 
-    let mut writer = split_write::SplitWriter::try_new(args.dest_dir, get_file_name, split_size)
+    let mut writer = split_write::SplitWriter::create(args.dest_dir, get_file_name, split_size)
         .expect("Failed to create split writer");
 
     std::io::copy(&mut reader, &mut writer).expect("Failed to copy file");

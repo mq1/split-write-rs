@@ -4,29 +4,29 @@
 use std::{
     fs::File,
     io::{self, Seek, Write},
-    num::NonZeroU64,
+    num::NonZeroUsize,
     path::PathBuf,
 };
 
 #[derive(Debug)]
 pub struct SplitWriter<F> {
-    split_size: NonZeroU64,
+    split_size: NonZeroUsize,
     dest_dir: PathBuf,
     get_file_name: F,
-    current_pos: u64,
+    current_offset: usize,
     first_file: File,
     last_file: Option<File>,
-    file_count: u64,
+    current_i: usize,
 }
 
 impl<F> SplitWriter<F>
 where
-    F: Fn(u64) -> String,
+    F: Fn(usize) -> String,
 {
-    pub fn try_new(
+    pub fn create(
         dest_dir: impl Into<PathBuf>,
         get_file_name: F,
-        split_size: NonZeroU64,
+        split_size: NonZeroUsize,
     ) -> io::Result<Self> {
         let dest_dir = dest_dir.into();
         let first_file = File::create(dest_dir.join(get_file_name(0)))?;
@@ -35,21 +35,22 @@ where
             split_size,
             dest_dir,
             get_file_name,
-            current_pos: 0,
+            current_offset: 0,
             first_file,
             last_file: None,
-            file_count: 1,
+            current_i: 0,
         })
     }
 
-    pub fn file_count(&self) -> u64 {
-        self.file_count
+    pub fn file_count(&self) -> usize {
+        self.current_i + 1
     }
 
     pub fn total_size(&self) -> u64 {
-        self.current_pos
+        self.split_size.get() as u64 * self.current_i as u64 + self.current_offset as u64
     }
 
+    /// Don't do any more writes after calling this!
     pub fn write_header(&mut self, header: &[u8]) -> io::Result<()> {
         self.first_file.rewind()?;
         self.first_file.write_all(header)
@@ -58,43 +59,36 @@ where
 
 impl<F> Write for SplitWriter<F>
 where
-    F: Fn(u64) -> String,
+    F: Fn(usize) -> String,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
 
-        let i = self.current_pos / self.split_size.get();
+        if self.current_offset == self.split_size.get() {
+            self.current_i += 1;
 
-        if self.file_count <= i {
-            let file_name = (self.get_file_name)(self.file_count);
+            let file_name = (self.get_file_name)(self.current_i);
             let file_path = self.dest_dir.join(file_name);
             let file = File::create(file_path)?;
 
-            if let Some(last_file) = &mut self.last_file {
-                last_file.flush()?;
-            }
-
             self.last_file = Some(file);
-            self.file_count += 1;
+            self.current_offset = 0;
         }
 
-        let (file, offset) = match &mut self.last_file {
-            Some(last_file) => (last_file, self.current_pos % self.split_size.get()),
-            None => (&mut self.first_file, self.current_pos),
+        let current_file = match &mut self.last_file {
+            Some(last_file) => last_file,
+            None => &mut self.first_file,
         };
 
-        let to_write = match usize::try_from(self.split_size.get() - offset) {
-            Ok(remaining) => buf.len().min(remaining),
-            Err(_) => buf.len(),
-        };
+        let remaining = self.split_size.get() - self.current_offset;
+        let to_write = buf.len().min(remaining);
+        let written = current_file.write(&buf[..to_write])?;
 
-        let n = file.write(&buf[..to_write])?;
+        self.current_offset += written;
 
-        self.current_pos += n as u64;
-
-        Ok(n)
+        Ok(written)
     }
 
     fn flush(&mut self) -> io::Result<()> {
