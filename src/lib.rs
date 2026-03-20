@@ -17,6 +17,7 @@ pub struct SplitWriter<F> {
     first_file: File,
     last_file: Option<File>,
     current_i: usize,
+    total_size: u64,
 }
 
 impl<F> SplitWriter<F>
@@ -39,6 +40,7 @@ where
             first_file,
             last_file: None,
             current_i: 0,
+            total_size: 0,
         })
     }
 
@@ -47,12 +49,7 @@ where
     }
 
     pub fn total_size(&self) -> u64 {
-        match self.split_size {
-            Some(split_size) => {
-                split_size.get() as u64 * self.current_i as u64 + self.current_offset as u64
-            }
-            None => self.current_offset as u64,
-        }
+        self.total_size
     }
 
     /// Don't do any more writes after calling this!
@@ -93,12 +90,14 @@ where
             Some(split_size) => {
                 let remaining = split_size.get() - self.current_offset;
                 let to_write = buf.len().min(remaining);
-                current_file.write(&buf[..to_write])?
+                let written = current_file.write(&buf[..to_write])?;
+                self.current_offset += written;
+                written
             }
             None => current_file.write(buf)?,
         };
 
-        self.current_offset += written;
+        self.total_size += written as u64;
 
         Ok(written)
     }
