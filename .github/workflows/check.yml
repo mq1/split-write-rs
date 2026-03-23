@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 1
 
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@1.88
+        uses: dtolnay/rust-toolchain@1.85
 
       - name: test
         run: |
