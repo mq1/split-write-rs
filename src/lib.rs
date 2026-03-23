@@ -68,8 +68,9 @@ where
             return Ok(0);
         }
 
-        if let Some(split_size) = self.split_size
-            && self.current_offset == split_size.get()
+        if self
+            .split_size
+            .is_some_and(|s| s.get() == self.current_offset)
         {
             self.current_i += 1;
 
@@ -81,20 +82,16 @@ where
             self.current_offset = 0;
         }
 
-        let current_file = match &mut self.last_file {
-            Some(last_file) => last_file,
-            None => &mut self.first_file,
-        };
+        let current_file = self.last_file.as_mut().unwrap_or(&mut self.first_file);
 
-        let written = match self.split_size {
-            Some(split_size) => {
-                let remaining = split_size.get() - self.current_offset;
-                let to_write = buf.len().min(remaining);
-                let written = current_file.write(&buf[..to_write])?;
-                self.current_offset += written;
-                written
-            }
-            None => current_file.write(buf)?,
+        let written = if let Some(split_size) = self.split_size {
+            let remaining = split_size.get() - self.current_offset;
+            let to_write = buf.len().min(remaining);
+            let written = current_file.write(&buf[..to_write])?;
+            self.current_offset += written;
+            written
+        } else {
+            current_file.write(buf)?
         };
 
         self.total_size += written as u64;
